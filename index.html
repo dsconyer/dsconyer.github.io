@@ -21,7 +21,7 @@
     <button type='button' class='btn bn-primary' id='startBtn'>Start</button>
   </div>
   <div id='messageBox'><p id='message'></p></div>
-  <div style="overflow-x:auto;">
+  <div>
     <table border='2'>
       <tbody id='outputTable'></tbody>
     </table>
@@ -436,7 +436,7 @@ function assignCourt(roundNbr) {
       }else {
         byes += ',  ';
       }
-      byes += (aPlayer.id + ' ')
+      byes += (aPlayer.id)
     }
   })
   outputStrings.push(byes);
