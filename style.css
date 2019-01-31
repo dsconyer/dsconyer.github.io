@@ -1,0 +1,12 @@
+html {
+      font-family: sans-serif;
+      background: #33FF00;
+    }
+#nbrOfCourtsInput {
+  margin-left: 4pt;
+}  
+#startBtn {
+  background-color: yellow;
+  width: 100pt;
+  height: 25pt;
+}

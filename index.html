@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css">
+  <title>Pickleball Scheduler</title>
+</head>
+<body>
+  <h1>Pickleball Scheduler</h1>
+  <div>
+    Number of Players:
+    <input type="number" class='form-control'  id='nbrOfPlayersInput' min=1 step=1>
+    <br>
+    <span>Number of Courts: </span>
+    <input type="number" class='form-control'  id='nbrOfCourtsInput' min=1 step=1>
+    <br>
+    Number of Games:
+    <input type="number" class='form-control'  id='nbrOfGamesInput' min=1 step=1>
+    <br>
+    <button type='button' class='btn bn-primary' id='startBtn'>Start</button>
+  </div>
+  <div>
+    <table border='2'>
+      <tbody id='outputTable'></tbody>
+    </table>
+  </div>
+
+<script>
+    let nbrOfPlayers = 17;
+    let nbrOfCourts = 3;
+    let nbrOfGames = 400;
+    const playerList = [];
+    let courtList =[];
+    let nbrOfByePlayers;
+    var myPlayerManager;
+    var myByeManager;
+
+    class player {
+      constructor (id) {
+        this.id = id;
+        this.playedWith = [];
+        this.playedAgainst = [];
+        this.courtsPlayed = [];
+        this.courtAssigned = 0;
+        this.nbrOfByes = 0;
+        this.isPlaying = true;
+        this.isAvailable = true;
+        this.isByePlayer = false;
+        this.hasSatOut = false;
+        this.partner;
+        this.priority = 0;
+      }
+    }
+
+    function initializeInputs() {
+      document.querySelector('#nbrOfPlayersInput').addEventListener('input', updateNbrOfPlayers);
+      document.querySelector('#nbrOfPlayersInput').focus();
+      document.querySelector('#nbrOfCourtsInput').addEventListener('input', updateNbrOfCourts);
+      document.querySelector('#nbrOfGamesInput').addEventListener('input', updateNbrOfGames);
+      document.querySelector('#startBtn').addEventListener('click', startProgram);
+    }
+    
+    function updateNbrOfPlayers(e) {
+      let value = parseInt(e.srcElement.value);
+      if(!isNaN(value)) {
+        nbrOfPlayers = value;
+      }
+    }
+
+    function updateNbrOfCourts(e) {
+      let value = parseInt(e.srcElement.value);
+      if(!isNaN(value)) {
+        nbrOfCourts = value;
+      }
+    }
+
+    function updateNbrOfGames(e) {
+      let value = parseInt(e.srcElement.value);
+      if(!isNaN(value)) {
+        nbrOfGames = value;
+      }
+    }
+      function pickTheByes() {
+        // pick new bye players
+        // console.log("The number of  bye players = ", nbrOfByePlayers);
+        let byePlayer;
+        let byePlayers = [];
+        let needToResetHasSatOut = false;
+        for(i=1; i<nbrOfByePlayers +1; i++){
+          byePlayer = playerList.slice().sort((a,b) => a.nbrOfByes - b.nbrOfByes).find((player) => {
+            if(player.hasSatOut === false && byePlayers.indexOf(player) < 0 ){
+              return true;
+            };
+          });
+          
+          if(byePlayer === undefined){
+            needToResetHasSatOut = true;
+            resetHasSatOut();
+            byePlayer = playerList.slice().sort((a,b) => a.nbrOfByes - b.nbrOfByes).find((player) => {
+              if(player.hasSatOut === false && byePlayers.indexOf(player) < 0 ){
+                return true;
+              };
+            });
+          }
+          //console.log("We have a bye player = ",  byePlayer.id);
+          if(byePlayer === undefined) {
+            i--;
+          } else {
+            byePlayers.push(byePlayer);
+          };
+
+        }
+        //reset old bye players
+        playerList.forEach((aPlayer) => {
+          if(aPlayer.isByePlayer) {
+            aPlayer.isByePlayer = false;
+            aPlayer.isAvailable = true;
+            aPlayer.isPlaying = true;
+            if(needToResetHasSatOut){ aPlayer.hasSatOut = false};
+            };
+        });
+
+        //set new bye players
+        byePlayers.forEach((aPlayer) => {
+          aPlayer.isByePlayer = true;
+          aPlayer.isAvailable = false;
+          aPlayer.isPlaying = false;
+          aPlayer.hasSatOut = true;
+          aPlayer.nbrOfByes++;
+        })
+      }
+     
+
+    function createNbrOfPlayers (nbrOfPlayers){
+      for(i=1; i<nbrOfPlayers+1; i++){
+          playerList.push(new player(i));
+      }
+      playerList.forEach((aPlayerInList)  => {
+        playerList.forEach((aPlayer) => {
+          if(aPlayerInList.id !== aPlayer.id) {
+            aPlayerInList.playedWith.push([aPlayer, 0]);
+            aPlayerInList.playedAgainst.push([aPlayer, 0]);
+          };
+        })
+        for(c=0; c < nbrOfCourts; c++){
+          aPlayerInList.courtsPlayed.push(0);
+        }
+      })
+    }
+
+    function  resetHasSatOut() {
+      playerList.forEach((entry) => {if(!entry.isByePlayer){ entry.hasSatOut = false};});
+    }
+
+    function initialize(nbrOfPlayers, nbrOfCourts){
+      //Initialize the playerList.
+      playerList.length = 0;
+      createNbrOfPlayers(nbrOfPlayers);
+      nbrOfByePlayers = nbrOfPlayers - (nbrOfCourts * 4);
+    }
+
+    function sortPlayedWith() {
+      playerList.forEach((aPlayer) => {
+        if(aPlayer.playedWith.length > 0) {
+          aPlayer.playedWith.sort((a,b) => a[1] - b[1]);
+        };
+      });
+    }
+
+
+    function onlyUnique(value, index, self) { 
+        return self.indexOf(value) === index;
+    } 
+    function assignPartners() {
+      //Clear the old partners
+      playerList.forEach((aPlayer) =>{
+        aPlayer.partner = undefined;
+        if(!aPlayer.isByePlayer){
+          aPlayer.isAvailable = true;
+        }
+      });
+     
+      //sort the playedWith for all players so we can process them in order
+      sortPlayedWith();
+
+        //Create a discrite list of how many times someone has played together
+        let  playedWithCounts = [];
+       playerList.forEach((aPlayer) => {
+          if(aPlayer.isPlaying) {
+            aPlayer.playedWith.forEach((a) => playedWithCounts.push(a[1]));
+          };
+        })
+        playedWithCounts = playedWithCounts.filter(onlyUnique).sort((a,b) => a - b);
+        //  console.log("PlayedWith counts = ", playedWithCounts);
+
+        //loop through the number of players and find the ones that have been assigned the least
+        //continue until all players are assigned
+        playedWithCounts.forEach((currentCount) => {
+          //Decide who gets to pick first by setting their priority.
+          playerList.forEach((aPlayer) => aPlayer.priority = 0);
+          playerList.forEach((aPlayer) => {
+            if(aPlayer.isAvailable){
+              aPlayer.playedWith.forEach((playedWithEntry) => {
+                if( playedWithEntry[0].isAvailable && playedWithEntry[1] === currentCount){
+                  aPlayer.priority++;
+                }
+              })
+            }
+          })
+          // Line up the players in order so they can pick partners
+          let playersToPickThisRound = playerList.filter((aPlayer) => aPlayer.priority > 0);
+          playersToPickThisRound.sort((a,b) => a.priority - b.priority);
+          // console.log('Players to pick for count: ', currentCount, '  = ', playersToPickThisRound);
+
+          //Let this group pick partners
+          //If the one they have played with the least is not available, then pick the next player you have played with least.
+          playersToPickThisRound.forEach((aPlayer) => {
+            aPlayer.playedWith.forEach((playedWithEntry) => {
+              if(aPlayer.isAvailable){
+                if( playedWithEntry[0].isAvailable && playedWithEntry[1] === currentCount){
+                    aPlayer.isAvailable = false;
+                    aPlayer.partner = playedWithEntry[0];
+                    playedWithEntry[0].isAvailable = false;
+                    playedWithEntry[0].partner = aPlayer;
+                    playedWithEntry[1]++;
+                    aPlayer.partner.playedWith.forEach((pwe) => {
+                      if(pwe[0] === aPlayer){ pwe[1]++};
+                    })
+                };
+                if( playedWithEntry[0].isAvailable && playedWithEntry[1] >= currentCount){
+
+                    aPlayer.isAvailable = false;
+                    aPlayer.partner = playedWithEntry[0];
+                    playedWithEntry[0].isAvailable = false;
+                    playedWithEntry[0].partner = aPlayer;
+                    playedWithEntry[1]++;
+                    aPlayer.partner.playedWith.forEach((pwe) => {
+                      if(pwe[0] === aPlayer){ pwe[1]++};
+                    })
+                };
+              };
+              })
+          })
+        })
+        
+      playerList.forEach((aPlayer) => {if(aPlayer.isAvailable) {
+        console.error(`Player ${aPlayer.id} doesn't have a partner.`);
+        console.log('Player list = ', playerList);
+        }});
+
+    }
+
+    function assignOpponents() {
+      let partnerArray =[];
+      let playedAgainstCounts = [];
+      courtList = [];
+
+      //Build basic partner list (PartnerId, Partner1, Partner2, [PartnerId, TotalTimesPlayedAgainst], Available, Priority)
+      playerList.forEach((aPlayer) => {
+        if(aPlayer.partner != undefined){
+          let playerFound = partnerArray.find((partners) => partners[1].id === aPlayer.id || partners[2].id === aPlayer.id);
+          if(playerFound == undefined) {
+            let partnerId = partnerArray.length + 1;
+            partnerArray.push([partnerId, aPlayer, aPlayer.partner, [], true, 0]);
+          }
+        }
+      });
+
+      //Count how many times each partner has played with each opponent.
+      partnerArray.forEach((partners) => {
+        partnerArray.forEach((opponents) => {
+          if(partners[0] != opponents[0]){
+            let partner1Count = 0;
+            partners[1].playedAgainst.forEach((playerData) => {
+              if(playerData[0].id === opponents[1].id || playerData[0].id === opponents[2].id){
+                partner1Count += playerData[1];
+              };
+            }); 
+            let partner2Count = 0;
+            partners[2].playedAgainst.forEach((playerData) => {
+              if(playerData[0].id === opponents[1].id || playerData[0].id === opponents[2].id){
+                partner2Count += playerData[1];
+              };
+            }); 
+            let nbrOfTimesPlayedOpponents = partner1Count + partner2Count;
+            playedAgainstCounts.push(nbrOfTimesPlayedOpponents);
+            partners[3].push([opponents[0], nbrOfTimesPlayedOpponents]);
+          }
+        })
+      })
+
+      //Figure out which opponent you have played the least.
+      //playedAgainstCounts tells you how many times partners have played other partners
+      playedAgainstCounts = playedAgainstCounts.filter(onlyUnique).sort((a,b) => a - b);
+      //loop through the partners and find the ones that have been assigned the least
+        //continue until all players are assigned
+        playedAgainstCounts.forEach((currentCount) => {
+          //Decide who gets to pick first by setting their priority.
+          partnerArray.forEach((partners) => {
+            //if partners are available.
+            if(partners[4]){
+              partners[3].forEach((opponent) => {
+                if(isOpponentAvailable(opponent, partnerArray) && opponent[1] === currentCount){
+                  partners[5]++;
+                };
+              })
+            }
+          })
+        });
+
+        partnerArray.sort((a,b) => a[5] -b[5]);
+        //Pick opponents
+        partnerArray.forEach((partners) => {
+          partners[3].sort((a,b) => a[1] - b[1]);
+          partners[3].forEach((opponent) => {
+            if(partners[4] && isOpponentAvailable(opponent, partnerArray)){
+              partners[4] = false;
+              let opponentPartners = getOpponentPartners(opponent, partnerArray);
+              opponentPartners[4] = false;
+              setPlayedAgainst(partners[1], opponentPartners[1]);
+              setPlayedAgainst(partners[1], opponentPartners[2]);
+              setPlayedAgainst(partners[2], opponentPartners[1]);
+              setPlayedAgainst(partners[2], opponentPartners[2]);
+
+              setPlayedAgainst(opponentPartners[1], partners[1]);
+              setPlayedAgainst(opponentPartners[1], partners[2]);
+              setPlayedAgainst(opponentPartners[2], partners[1]);
+              setPlayedAgainst(opponentPartners[2], partners[2]);
+
+              let courtCounts = [];
+              for(i = 0; i < nbrOfCourts; i++){
+              courtCounts[i] = 
+                    partners[1].courtsPlayed[i] + 
+                    partners[2].courtsPlayed[i] + 
+                    opponentPartners[1].courtsPlayed[i]  + 
+                    opponentPartners[2].courtsPlayed[i];
+              };
+              //courtList has one entry for each group of teams.
+              //it lists the players, sum of the times the players have played on each court, if they are available for court assignment
+              courtList.push([[partners[1], partners[2], opponentPartners[1], opponentPartners[2]], courtCounts, true]);
+            }
+          })
+        })
+      // console.log("Partner Array");
+      // console.table(partnerArray);
+      // console.log('PlayedAgainstCounts = ', playedAgainstCounts);
+    }
+    
+    function setPlayedAgainst(player, opponent) {
+      player.playedAgainst.find((p) => {
+        return p[0].id == opponent.id;
+      })[1]++;
+    }
+
+    function getOpponentPartners(opponent, partnerArray) {
+      let opponentPartners;
+      partnerArray.forEach((p) => {
+        if(p[0] === opponent[0] ) {
+          opponentPartners = p;
+        }});
+        return opponentPartners;
+    }
+
+    function isOpponentAvailable(opponent, partnerArray) {
+      let opponentIsAvailable = false;
+      partnerArray.forEach((p) => {
+        if(p[0] === opponent[0] && p[4]) {
+          opponentIsAvailable = true;
+        }
+      });
+      return opponentIsAvailable;
+    }
+
+function assignCourt(roundNbr) {
+  let outputAssignments = [];
+  //of the available teams, who has played the least on each court
+  playerList.forEach((aPlayer) => {
+    aPlayer.courtAssigned = undefined;
+  });
+
+  for(courtNbr = 0; courtNbr < nbrOfCourts; courtNbr++){
+    let lowestPlays = nbrOfGames * nbrOfPlayers;
+    let players, courtListIndex;
+    let outputRec = [];
+    
+    courtList.forEach((courtData, index) => {
+      if(courtData[2] && courtData[1][courtNbr] < lowestPlays) {
+        lowestPlays = courtData[1][courtNbr];
+        players = courtData[0];
+        courtListIndex = index;
+      };
+    })
+    //Mark the group of players are not available for court assignment because they were assigned.
+    courtList[courtListIndex][2] = false;
+    outputRec.push(courtListIndex);
+    players.forEach((aPlayer) =>{
+      aPlayer.courtAssigned = courtNbr;
+      outputRec.push(aPlayer.id);
+      aPlayer.courtsPlayed[courtNbr]++;
+    })
+    outputAssignments.push(outputRec);
+  }
+  outputAssignments.sort((a,b) => a[0] - b[0]);
+  let outputStrings = [];
+  outputStrings.push("Round = " + roundNbr);
+  for(i = 0; i < outputAssignments.length; i++){
+    let o = outputAssignments[i];
+     outputStrings.push(o[1] + ' & ' + o[2] + ' vs ' + o[3] + ' & ' + o[4]);
+  }
+  let byes = "";
+  playerList.forEach((aPlayer) => {
+    if(aPlayer.isByePlayer){byes += (aPlayer.id + ' ')}
+  })
+  outputStrings.push(byes);
+  generateOutput(outputStrings.length, ...outputStrings);
+}
+
+function generateOutput(columnCount, ...columnData) {
+    let tblBody = document.querySelector('#outputTable');
+    let row = document.createElement("tr");
+
+    for (let j = 0; j < columnCount; j++) {
+      // Create a <td> element and a text node, make the text
+      // node the contents of the <td>, and put the <td> at
+      // the end of the table row
+      let cell = document.createElement("td");
+      let cellText = document.createTextNode(columnData[j]);
+      if (j>0){
+        var a = document.createAttribute("text-align");
+        a.value = "center";
+        cell.setAttributeNode(a);
+      }
+      cell.appendChild(cellText);
+      row.appendChild(cell);
+    }
+
+    // add the row to the end of the table body
+    tblBody.appendChild(row);
+  // }
+}
+
+function generateHeader() {
+      generateOutput(1, "Players = " + nbrOfPlayers);
+      generateOutput(1, "Courts = " + nbrOfCourts);
+      generateOutput(1, "Games = " + nbrOfGames);
+      let outputStrings = [""];
+      for(i=0; i < nbrOfCourts; i++){
+        let courtNumber = i + 1.
+        outputStrings.push("Court " + courtNumber);
+      }
+      outputStrings.push("Byes");
+      generateOutput(outputStrings.length,...outputStrings);
+}
+
+function initializeOutput() {
+  let tblBody = document.querySelector('#outputTable');
+  let tbl = tblBody.parentNode;
+  tbl.removeChild(tblBody);
+  tblBody = document.createElement("tblBody");
+  tbl.appendChild(tblBody);
+  
+  var a = document.createAttribute("id");
+  a.value = "outputTable";
+  tblBody.setAttributeNode(a);
+
+}
+
+
+    //Here is the start of the program.
+    initializeInputs();
+    function startProgram() {
+          
+      initialize(nbrOfPlayers, nbrOfCourts);
+      initializeOutput();
+      generateHeader();
+          
+      for (var index = 0; index < nbrOfGames; index++) {
+        playerList.sort(function() { return 0.5 - Math.random() });
+        let roundNbr = index + 1;
+        
+      pickTheByes();
+      // This line is just for reporting bye players.  Can be deleted.
+      // playerList.filter((aPlayer) => aPlayer.isByePlayer).forEach((aPlayer) => console.log("Bye Player = " , aPlayer.id ));
+
+      assignPartners();
+      playerList.forEach((aPlayer) => {
+        if(aPlayer.partner != undefined){
+          // console.log('Player id = ', aPlayer.id, '    Partner = ', aPlayer.partner.id);
+        }else {
+          // console.log('Player id = ', aPlayer.id, '    Partner = ', aPlayer.partner);
+        };
+      });
+      assignOpponents();
+      assignCourt(roundNbr);
+
+      };
+
+    }
+</script>
+</body>
+</html>
