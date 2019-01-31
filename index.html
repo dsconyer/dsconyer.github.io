@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css">
   <title>Pickleball Scheduler</title>
 </head>
 <body>
@@ -20,7 +20,8 @@
     <br>
     <button type='button' class='btn bn-primary' id='startBtn'>Start</button>
   </div>
-  <div>
+  <div id='messageBox'><p id='message'></p></div>
+  <div style="overflow-x:auto;">
     <table border='2'>
       <tbody id='outputTable'></tbody>
     </table>
@@ -31,11 +32,10 @@
     let nbrOfCourts = 3;
     let nbrOfGames = 400;
     const playerList = [];
-    let courtList =[];
+    let courtList = [];
     let nbrOfByePlayers;
-    var myPlayerManager;
-    var myByeManager;
-
+    let roundData = [];
+    
     class player {
       constructor (id) {
         this.id = id;
@@ -65,16 +65,23 @@
       let value = parseInt(e.srcElement.value);
       if(!isNaN(value)) {
         nbrOfPlayers = value;
+        setNbrOfCourts(parseInt(document.querySelector('#nbrOfCourtsInput').value));
       }
     }
 
     function updateNbrOfCourts(e) {
       let value = parseInt(e.srcElement.value);
-      if(!isNaN(value)) {
-        nbrOfCourts = value;
-      }
+      setNbrOfCourts(value);
     }
 
+    function setNbrOfCourts(value) {
+      nbrOfCourts = Math.trunc(nbrOfPlayers / 4);
+      if(!isNaN(value)) {
+        if(nbrOfCourts > value)
+        nbrOfCourts = value;
+      }
+      
+    }
     function updateNbrOfGames(e) {
       let value = parseInt(e.srcElement.value);
       if(!isNaN(value)) {
@@ -82,8 +89,6 @@
       }
     }
       function pickTheByes() {
-        // pick new bye players
-        // console.log("The number of  bye players = ", nbrOfByePlayers);
         let byePlayer;
         let byePlayers = [];
         let needToResetHasSatOut = false;
@@ -103,7 +108,7 @@
               };
             });
           }
-          //console.log("We have a bye player = ",  byePlayer.id);
+
           if(byePlayer === undefined) {
             i--;
           } else {
@@ -154,10 +159,29 @@
     }
 
     function initialize(nbrOfPlayers, nbrOfCourts){
+      let maxPlayers =  2 * (nbrOfCourts * 4);
       //Initialize the playerList.
       playerList.length = 0;
+      roundData.length = 0;
+      let message = document.querySelector('#message');
+      let playerValue = document.querySelector('#nbrOfPlayersInput').value;
+      let courtValue = document.querySelector('#nbrOfCourtsInput').value;
+      let messageText = '';
+      
+      if (nbrOfPlayers > maxPlayers){
+        nbrOfPlayers = maxPlayers;
+      }
       createNbrOfPlayers(nbrOfPlayers);
       nbrOfByePlayers = nbrOfPlayers - (nbrOfCourts * 4);
+      
+      if(playerValue != nbrOfPlayers) {
+        messageText = `Number of players was limited to ${nbrOfPlayers}.`;
+      }
+      if(courtValue != nbrOfCourts){
+        if(playerValue != nbrOfPlayers) { messageText += '\n'; };
+        messageText += `Number of courts was limited to ${nbrOfCourts}.`;
+      }
+      message.innerText = messageText;
     }
 
     function sortPlayedWith() {
@@ -192,7 +216,6 @@
           };
         })
         playedWithCounts = playedWithCounts.filter(onlyUnique).sort((a,b) => a - b);
-        //  console.log("PlayedWith counts = ", playedWithCounts);
 
         //loop through the number of players and find the ones that have been assigned the least
         //continue until all players are assigned
@@ -211,7 +234,6 @@
           // Line up the players in order so they can pick partners
           let playersToPickThisRound = playerList.filter((aPlayer) => aPlayer.priority > 0);
           playersToPickThisRound.sort((a,b) => a.priority - b.priority);
-          // console.log('Players to pick for count: ', currentCount, '  = ', playersToPickThisRound);
 
           //Let this group pick partners
           //If the one they have played with the least is not available, then pick the next player you have played with least.
@@ -342,9 +364,6 @@
             }
           })
         })
-      // console.log("Partner Array");
-      // console.table(partnerArray);
-      // console.log('PlayedAgainstCounts = ', playedAgainstCounts);
     }
     
     function setPlayedAgainst(player, opponent) {
@@ -403,17 +422,25 @@ function assignCourt(roundNbr) {
   }
   outputAssignments.sort((a,b) => a[0] - b[0]);
   let outputStrings = [];
-  outputStrings.push("Round = " + roundNbr);
+  outputStrings.push( roundNbr);
   for(i = 0; i < outputAssignments.length; i++){
     let o = outputAssignments[i];
-     outputStrings.push(o[1] + ' & ' + o[2] + ' vs ' + o[3] + ' & ' + o[4]);
+     outputStrings.push(o[1] + ' & ' + o[2] + '    vs    ' + o[3] + ' & ' + o[4]);
   }
   let byes = "";
+  let first = true;
   playerList.forEach((aPlayer) => {
-    if(aPlayer.isByePlayer){byes += (aPlayer.id + ' ')}
+    if(aPlayer.isByePlayer){
+      if(first){
+        first = false;
+      }else {
+        byes += ',  ';
+      }
+      byes += (aPlayer.id + ' ')
+    }
   })
   outputStrings.push(byes);
-  generateOutput(outputStrings.length, ...outputStrings);
+  roundData.push(outputStrings);
 }
 
 function generateOutput(columnCount, ...columnData) {
@@ -425,26 +452,25 @@ function generateOutput(columnCount, ...columnData) {
       // node the contents of the <td>, and put the <td> at
       // the end of the table row
       let cell = document.createElement("td");
+      let pre = document.createElement("pre");
       let cellText = document.createTextNode(columnData[j]);
-      if (j>0){
-        var a = document.createAttribute("text-align");
-        a.value = "center";
-        cell.setAttributeNode(a);
-      }
-      cell.appendChild(cellText);
+      var a = document.createAttribute('style');
+      a.value = "text-align: center;";
+      cell.setAttributeNode(a);
+      pre.appendChild(cellText);
+      cell.appendChild(pre);
       row.appendChild(cell);
     }
 
     // add the row to the end of the table body
     tblBody.appendChild(row);
-  // }
 }
 
 function generateHeader() {
       generateOutput(1, "Players = " + nbrOfPlayers);
       generateOutput(1, "Courts = " + nbrOfCourts);
       generateOutput(1, "Games = " + nbrOfGames);
-      let outputStrings = [""];
+      let outputStrings = ["Round"];
       for(i=0; i < nbrOfCourts; i++){
         let courtNumber = i + 1.
         outputStrings.push("Court " + courtNumber);
@@ -466,6 +492,11 @@ function initializeOutput() {
 
 }
 
+function generateRoundData() {
+  roundData.forEach((outputStrings) => {
+    generateOutput(outputStrings.length, ...outputStrings);
+  })
+}
 
     //Here is the start of the program.
     initializeInputs();
@@ -480,23 +511,13 @@ function initializeOutput() {
         let roundNbr = index + 1;
         
       pickTheByes();
-      // This line is just for reporting bye players.  Can be deleted.
-      // playerList.filter((aPlayer) => aPlayer.isByePlayer).forEach((aPlayer) => console.log("Bye Player = " , aPlayer.id ));
-
       assignPartners();
-      playerList.forEach((aPlayer) => {
-        if(aPlayer.partner != undefined){
-          // console.log('Player id = ', aPlayer.id, '    Partner = ', aPlayer.partner.id);
-        }else {
-          // console.log('Player id = ', aPlayer.id, '    Partner = ', aPlayer.partner);
-        };
-      });
       assignOpponents();
       assignCourt(roundNbr);
-
       };
-
+      generateRoundData();
     }
+
 </script>
 </body>
 </html>
